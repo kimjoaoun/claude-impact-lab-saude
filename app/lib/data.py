@@ -204,7 +204,7 @@ def selecao_dia(
     n: int,
     prev_status: dict[str, str] | None = None,
     followup_triggers: set[str] | None = None,
-    cooldown_pids: set[str] | None = None,
+    exclude_pids: set[str] | None = None,
     forced_front_pids: set[str] | None = None,
 ) -> list[str]:
     """
@@ -214,12 +214,16 @@ def selecao_dia(
       1. Reofertas forçadas entram primeiro.
       2. Follow-ups do snapshot anterior entram na frente.
       3. Famílias mais prioritárias sobem dentro da ordem territorial.
-      4. Atendidos na mesma semana vão para o fim da prioridade.
+      4. Atendidos no mês corrente são excluídos do panel (a menos que
+         estejam em `forced_front_pids` — ex.: alta prioridade com gap).
     """
     triggers = followup_triggers or {"não atendeu", "recusou atendimento"}
-    cooldown = cooldown_pids or set()
+    excluded = (exclude_pids or set()) - (forced_front_pids or set())
     forced_front = forced_front_pids or set()
-    pool_order = lista_inicial(df_cluster, ubs_lat, ubs_lon)
+    pool_order = [
+        pid for pid in lista_inicial(df_cluster, ubs_lat, ubs_lon)
+        if pid not in excluded
+    ]
     priority_lookup = df_cluster.set_index("paciente_id")["priority_band"].to_dict()
 
     def _by_priority(candidates: list[str]) -> list[str]:
@@ -238,15 +242,8 @@ def selecao_dia(
     else:
         followups = []
     blocked = set(forced) | set(followups)
-    frescos = [
-        p for p in pool_order
-        if p not in blocked and p not in cooldown
-    ]
-    cooldown_tail = [
-        p for p in pool_order
-        if p not in blocked and p in cooldown
-    ]
-    ranked = forced + _by_priority(followups) + _by_priority(frescos) + _by_priority(cooldown_tail)
+    frescos = [p for p in pool_order if p not in blocked]
+    ranked = forced + _by_priority(followups) + _by_priority(frescos)
     return ranked[:n]
 
 
