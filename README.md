@@ -28,18 +28,20 @@ Video de Apresentação: https://drive.google.com/file/d/1vN3lv190kKVMaafIqZnxX6
 ---
 ### Arquitetura / abordagem: como o Claude foi usado para construir e como ele atua dentro da aplicação
 #### - Claude gerou a Matriz Família — Score de Risco por Domicílio que foi composta a partir da combinação dos Critérios de vulnerabilidade e risco (Escala de Risco Familiar) e Critérios por linha de cuidado (protocolos clínicos) como exemplo de como a priorização poderia ser pensada considerando a FAMÍLIA como o foco da visita e para a análise dos riscos
-#### - Claude code ...
+#### - Claude Code construiu o protótipo end-to-end a partir do briefing e da Matriz Família, atuando como par de programação durante toda a implementação:
+
+- 🐳 **Containerizou o OSRM** — escreveu o `routing/docker-compose.yml` (perfis `foot` e `car`) e os scripts `routing/scripts/` para download, crop e build do grafo OSM da região do Rio.
+- 🧱 **Implementou o frontend Streamlit completo** (`app/streamlit_app.py`) seguindo o briefing — seleção de equipe/ACS, lista do dia priorizada, reordenação manual, mapa interativo com Folium, marcação de status em campo e persistência.
+- 🧮 **Traduziu a Matriz Família em código** — `classify_family_priority`, `derive_family_status`, grid territorial 150m (`add_id_familia_sint`), faixas alta/média/baixa, cadência mensal com exclusão dura e rerank no-show.
+- 🔁 **Implementou o substituto em runtime** (`find_substitute_by_detour` em `app/lib/data.py`) — busca off-list por corredor (300m) e detour mínimo (400m) quando o ACS marca um domicílio como não-atendido.
+- 🗺️ **Integrou o OSRM ao app** (`app/lib/osrm.py`) — health check no startup, rota a pé com ordem fixa dos waypoints, recálculo automático a cada mutação.
+- 🖨️ **Gerou a rota imprimível** (`build_print_html`) — HTML autocontido com mapa Folium embutido, ficha por morador e coluna de endereço pautada para o ACS anotar à mão; A4 via `@media print`.
+- 💾 **Estruturou a persistência por dia** (`app/lib/state.py`) — snapshots JSON em `app/data/dia/`, base para rerank no-show e cadência mensal entre dias.
+- 📝 **Documentou tudo** — este README, [`docs/criterios-familias.md`](docs/criterios-familias.md) (heurística completa) e [`routing/README.md`](routing/README.md) (setup OSRM).
+
+> Modo de operação: planejamento via plan mode, edições cirúrgicas com Edit/Write, verificação contínua com `py_compile` e o app rodando em `localhost:8501`. Commits e PRs também foram orquestrados pelo Claude Code (ver histórico do `master`).
+
 ### Vídeo demo: demonstração de 60s. Opcional se a aplicação estiver publicamente acessível; obrigatório caso contrário.
-
-## ✅ O que foi construído
-
-- 🐳 **OSRM self-hosted containerizado** — `routing/docker-compose.yml` com perfil `foot` (e `car`) e scripts de download/crop/build do grafo OSM em `routing/scripts/`.
-- 🧱 **Frontend Streamlit completo** seguindo o briefing — seleção de equipe/ACS, lista do dia priorizada, reordenação manual, mapa interativo, marcação de status em campo.
-- 🧮 **Heurística de ranqueamento por domicílio** — grid 150m, score clínico/social, faixas alta/média/baixa, cadência mensal com exclusão dura e rerank no-show.
-- 🔁 **Substituto em runtime** — quando o ACS marca não-atendido, o app busca candidato off-list por detour mínimo e recalcula a rota.
-- 🗺️ **Integração com OSRM** — health check no startup, rota a pé desenhada com ordem fixa dos waypoints, recalculável a cada mutação.
-- 🖨️ **Rota imprimível** — export HTML autocontido com mapa embutido, ficha por morador e campo de endereço pautado para anotação manual.
-- 💾 **Persistência por dia** — snapshots JSON em `app/data/dia/`, base para rerank no-show e cadência mensal.
 
 ---
 
