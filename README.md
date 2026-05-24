@@ -15,6 +15,18 @@
 
 ---
 
+## ✅ O que foi construído
+
+- 🐳 **OSRM self-hosted containerizado** — `routing/docker-compose.yml` com perfil `foot` (e `car`) e scripts de download/crop/build do grafo OSM em `routing/scripts/`.
+- 🧱 **Frontend Streamlit completo** seguindo o briefing — seleção de equipe/ACS, lista do dia priorizada, reordenação manual, mapa interativo, marcação de status em campo.
+- 🧮 **Heurística de ranqueamento por domicílio** — grid 150m, score clínico/social, faixas alta/média/baixa, cadência mensal com exclusão dura e rerank no-show.
+- 🔁 **Substituto em runtime** — quando o ACS marca não-atendido, o app busca candidato off-list por detour mínimo e recalcula a rota.
+- 🗺️ **Integração com OSRM** — health check no startup, rota a pé desenhada com ordem fixa dos waypoints, recalculável a cada mutação.
+- 🖨️ **Rota imprimível** — export HTML autocontido com mapa embutido, ficha por morador e campo de endereço pautado para anotação manual.
+- 💾 **Persistência por dia** — snapshots JSON em `app/data/dia/`, base para rerank no-show e cadência mensal.
+
+---
+
 ## 🎯 O que a solução faz
 
 - 🧮 **Monta a lista do dia** de cada ACS (~10–15 domicílios) a partir do panel territorial dele, com critério explicado linha a linha.
