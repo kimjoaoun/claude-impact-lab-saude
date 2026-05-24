@@ -19,7 +19,7 @@
 
 - 🧮 **Monta a lista do dia** de cada ACS (~10–15 domicílios) a partir do panel territorial dele, com critério explicado linha a linha.
 - 🚦 **Prioriza por risco clínico e social** — gestação, vulnerabilidade, diabetes, hipertensão, eventos clínicos recentes — sem perder a lógica geográfica do território.
-- 🗺️ **Traça a rota a pé** com **OSRM self-hosted**, respeitando a ordem que o ACS decidir, e **recalcula** sempre que algo muda em campo.
+- 🗺️ **Traça a rota a pé** com **OSRM self-hosted em tempo real, com dados de ruas verdadeiras**, respeitando a ordem que o ACS decidir, e **recalcula** sempre que algo muda em campo.
 - 🖨️ **Gera versão imprimível** (HTML → PDF) da rota e da ficha de cada visita, pro ACS que vai a campo sem celular ou prefere anotar à mão.
 
 ---
