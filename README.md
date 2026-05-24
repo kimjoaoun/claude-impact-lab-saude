@@ -9,11 +9,23 @@
 
 </div>
 
+### **Nome da equipe:** Radar Família (G27)
+### **Membros da equipe:**
+    Ana Luisa Santos
+    Gabriel de Albuquerque dos Santos
+    João Pedro Oliveira
+    Juliana Jansen Ferreira
+### **Tema:** Saúde
+### **Resumo:**
 ---
 
 > **Radar Família** é um protótipo para apoiar o planejamento diário dos Agentes Comunitários de Saúde (ACS). Em uma tela: ele sugere **quais domicílios visitar hoje**, **em que ordem caminhar**, **por que cada família foi priorizada** e traça uma **rota a pé** entre eles. Quando o dia não sai como planejado, ele realoca substitutos e regera a rota. No fim, o ACS pode **imprimir** tudo e levar pra rua.
 
 ---
+### Arquitetura / abordagem: como o Claude foi usado para construir e como ele atua dentro da aplicação
+#### - Claude gerou a Matriz Família — Score de Risco por Domicílio que foi composta a partir da combinação dos Critérios de vulnerabilidade e risco (Escala de Risco Familiar) e Critérios por linha de cuidado (protocolos clínicos) como exemplo de como a priorização poderia ser pensada considerando a FAMÍLIA como o foco da visita e para a análise dos riscos
+#### - Claude code ...
+### Vídeo demo: demonstração de 60s. Opcional se a aplicação estiver publicamente acessível; obrigatório caso contrário.
 
 ## 🎯 O que a solução faz
 
