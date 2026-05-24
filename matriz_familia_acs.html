@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Priorização Familiar — ACS · SMS-Rio</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0F0F0F;
+  --surface: #171717;
+  --surface2: #1F1F1F;
+  --surface3: #282828;
+  --border: rgba(255,255,255,.08);
+  --border2: rgba(255,255,255,.14);
+  --text: #F0EDE8;
+  --text2: #A09B94;
+  --text3: #6B6560;
+  --crit: #FF4A35;
+  --crit-bg: rgba(255,74,53,.1);
+  --crit-border: rgba(255,74,53,.25);
+  --high: #FF8C00;
+  --high-bg: rgba(255,140,0,.1);
+  --high-border: rgba(255,140,0,.25);
+  --med: #F5C842;
+  --med-bg: rgba(245,200,66,.08);
+  --med-border: rgba(245,200,66,.22);
+  --low: #4CAF7D;
+  --low-bg: rgba(76,175,125,.08);
+  --low-border: rgba(76,175,125,.2);
+  --accent: #5B8CFF;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+  --serif: 'Lora', serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ── HERO ── */
+.hero {
+  padding: 3.5rem 2rem 2.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+.hero-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+.hero h1 {
+  font-family: var(--serif);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--text);
+  margin-bottom: .75rem;
+}
+.hero h1 em { font-style: italic; color: var(--crit); }
+.hero p {
+  font-size: 14px;
+  color: var(--text2);
+  max-width: 580px;
+  line-height: 1.75;
+}
+.score-legend {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1.75rem;
+  flex-wrap: wrap;
+}
+.sl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+}
+.sl-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+
+/* ── NAV TABS ── */
+.tabs {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  overflow-x: auto;
+}
+.tab {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  color: var(--text3);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all .2s;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+.tab:hover { color: var(--text2); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* ── MAIN LAYOUT ── */
+.main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+.section { display: none; }
+.section.active { display: block; }
+
+/* ── PESOS TABLE ── */
+.pesos-intro {
+  margin-bottom: 2rem;
+}
+.pesos-intro h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.4rem;
+  margin-bottom: .5rem;
+}
+.pesos-intro p { font-size: 13px; color: var(--text2); line-height: 1.7; max-width: 620px; }
+
+.formula-box {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 2;
+}
+.formula-box strong { color: var(--text); font-weight: 500; }
+.formula-box .formula-line { color: var(--accent); font-size: 13px; margin: .25rem 0; }
+
+.pesos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+.pesos-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pesos-card-header {
+  padding: .75rem 1rem;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pesos-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.pesos-row:last-child { border-bottom: none; }
+.pesos-row .cond { color: var(--text2); flex: 1; }
+.pesos-row .bar-wrap {
+  width: 120px;
+  height: 4px;
+  background: var(--surface3);
+  border-radius: 2px;
+  margin: 0 12px;
+  flex-shrink: 0;
+}
+.pesos-row .bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .6s ease;
+}
+.pesos-row .score-val {
+  font-family: var(--mono);
+  font-size: 12px;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* multiplier rows */
+.mult-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.mult-row:last-child { border-bottom: none; }
+.mult-row .cond { color: var(--text2); flex: 1; font-size: 12px; }
+.mult-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(91,140,255,.12);
+  color: var(--accent);
+}
+
+/* ── FILA DE FAMÍLIAS ── */
+.fila-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.fila-header h2 { font-family: var(--serif); font-weight: 400; font-size: 1.4rem; }
+.fila-header p { font-size: 13px; color: var(--text2); margin-top: .25rem; }
+.sort-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+.sort-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: none;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all .15s;
+}
+.sort-btn:hover { color: var(--text2); border-color: var(--border2); }
+.sort-btn.active { background: var(--surface3); color: var(--text); border-color: var(--border2); }
+
+.family-list { display: flex; flex-direction: column; gap: 10px; }
+
+.family-card {
+  background: var(--surface);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  transition: border-color .2s;
+  animation: fadeUp .3s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.family-card:hover { border-color: var(--border2); }
+
+.fc-main {
+  display: grid;
+  grid-template-columns: 48px 1fr auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+}
+.fc-rank {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  text-align: center;
+}
+.fc-rank .num {
+  font-size: 1.4rem;
+  font-weight: 500;
+  line-height: 1;
+  display: block;
+  color: var(--text2);
+}
+.fc-info .name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.fc-info .addr {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+.fc-info .members-preview {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.member-pip {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--surface3);
+  color: var(--text3);
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.member-pip.crit { background: var(--crit-bg); color: var(--crit); border: 1px solid var(--crit-border); }
+.member-pip.high { background: var(--high-bg); color: var(--high); border: 1px solid var(--high-border); }
+.member-pip.med  { background: var(--med-bg); color: var(--med); border: 1px solid var(--med-border); }
+.member-pip.low  { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); }
+
+.fc-score-wrap { text-align: center; }
+.score-ring {
+  position: relative;
+  width: 56px; height: 56px;
+  margin: 0 auto 4px;
+}
+.score-ring svg { transform: rotate(-90deg); }
+.score-ring .score-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+}
+.score-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: center;
+}
+.fc-freq { text-align: right; }
+.freq-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+.fc-toggle { font-size: 14px; color: var(--text3); transition: transform .2s; }
+.family-card.open .fc-toggle { transform: rotate(45deg); }
+
+.fc-body {
+  display: none;
+  border-top: 1px solid var(--border);
+  padding: 1.25rem;
+}
+.family-card.open .fc-body { display: block; }
+
+.members-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+.members-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: .4rem .75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.members-table td {
+  padding: .6rem .75rem;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.members-table tr:last-child td { border-bottom: none; }
+.members-table td .m-name { font-weight: 500; color: var(--text); margin-bottom: 2px; }
+.members-table td .m-detail { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.members-table td .alert-flag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.score-breakdown {
+  background: var(--surface2);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.9;
+}
+.score-breakdown .sb-line { display: flex; justify-content: space-between; }
+.score-breakdown .sb-line.total {
+  border-top: 1px solid var(--border);
+  margin-top: .25rem;
+  padding-top: .25rem;
+  color: var(--text);
+  font-weight: 500;
+}
+.score-breakdown .sb-val { color: var(--text2); }
+
+.action-row {
+  margin-top: 1rem;
+  padding: .875rem 1rem;
+  background: var(--surface2);
+  border-radius: 6px;
+  border-left: 2px solid var(--accent);
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.65;
+}
+.action-row strong { color: var(--text); font-weight: 500; }
+
+/* ── PESOS TABLE COLORS ── */
+.crit-color { background: var(--crit); }
+.high-color { background: var(--high); }
+.med-color  { background: var(--med); }
+.low-color  { background: var(--low); }
+
+/* score ring colors */
+.ring-crit { stroke: var(--crit); }
+.ring-high { stroke: var(--high); }
+.ring-med  { stroke: var(--med); }
+.ring-low  { stroke: var(--low); }
+
+.score-label.crit { color: var(--crit); }
+.score-label.high { color: var(--high); }
+.score-label.med  { color: var(--med); }
+.score-label.low  { color: var(--low); }
+
+.freq-chip.crit { background: var(--crit-bg); color: var(--crit); border: 1px solid var(--crit-border); }
+.freq-chip.high { background: var(--high-bg); color: var(--high); border: 1px solid var(--high-border); }
+.freq-chip.med  { background: var(--med-bg); color: var(--med); border: 1px solid var(--med-border); }
+.freq-chip.low  { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); }
+
+.fc-main.crit { border-left: 3px solid var(--crit); }
+.fc-main.high { border-left: 3px solid var(--high); }
+.fc-main.med  { border-left: 3px solid var(--med); }
+.fc-main.low  { border-left: 3px solid var(--low); }
+
+/* ── SIMULADOR ── */
+.sim-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 820px) { .sim-layout { grid-template-columns: 1fr; } }
+
+.sim-panel h2 { font-family: var(--serif); font-weight: 400; font-size: 1.4rem; margin-bottom: .5rem; }
+.sim-panel p { font-size: 13px; color: var(--text2); margin-bottom: 1.5rem; line-height: 1.7; }
+
+.add-member-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.form-group select, .form-group input {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+.form-group select:focus, .form-group input:focus { border-color: var(--accent); }
+.form-group select option { background: #1F1F1F; }
+.add-btn {
+  width: 100%;
+  padding: 9px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.add-btn:hover { opacity: .85; }
+
+.sim-members { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1rem; }
+.sim-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .625rem 1rem;
+  font-size: 13px;
+  animation: fadeUp .2s ease both;
+}
+.sim-member .sm-info { flex: 1; }
+.sim-member .sm-name { font-weight: 500; }
+.sim-member .sm-cond { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.sim-member .sm-score {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.sm-del {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  transition: color .15s;
+}
+.sm-del:hover { color: var(--crit); }
+
+.sim-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  position: sticky;
+  top: 1rem;
+}
+.sim-result h3 { font-family: var(--serif); font-weight: 400; font-size: 1.2rem; margin-bottom: 1.25rem; }
+.big-score {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.big-score .num {
+  font-family: var(--mono);
+  font-size: 4rem;
+  font-weight: 500;
+  line-height: 1;
+  display: block;
+}
+.big-score .label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-top: .25rem;
+  display: block;
+}
+.big-score .freq-rec {
+  font-size: 13px;
+  color: var(--text2);
+  margin-top: .5rem;
+}
+.breakdown-list { font-family: var(--mono); font-size: 11px; color: var(--text3); line-height: 2; }
+.breakdown-list .bl-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); }
+.breakdown-list .bl-row:last-child { border-bottom: none; }
+.breakdown-list .bl-row.total { color: var(--text); font-weight: 500; padding-top: .25rem; margin-top: .25rem; border-top: 1px solid var(--border2); border-bottom: none; }
+.empty-state {
+  text-align: center;
+  padding: 2rem 0;
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* footer */
+.footer {
+  max-width: 1100px;
+  margin: 3rem auto 0;
+  padding: 1rem 2rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .06em;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-tag">SMS-Rio · ACS · Hackathon 2026 · Priorização Familiar</div>
+  <h1>Score de risco<br>por <em>família</em></h1>
+  <p>Modelo de pontuação composta que agrega o risco individual de cada membro do domicílio em um único score familiar, permitindo ao ACS priorizar quais endereços visitar primeiro no roteiro do dia.</p>
+  <div class="score-legend">
+    <div class="sl-item"><div class="sl-dot" style="background:var(--crit)"></div>Crítico — 81–100</div>
+    <div class="sl-item"><div class="sl-dot" style="background:var(--high)"></div>Alta — 61–80</div>
+    <div class="sl-item"><div class="sl-dot" style="background:var(--med)"></div>Média — 41–60</div>
+    <div class="sl-item"><div class="sl-dot" style="background:var(--low)"></div>Habitual — 0–40</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('pesos',this)">Modelo de pesos</button>
+  <button class="tab" onclick="showTab('fila',this)">Fila de famílias</button>
+  <button class="tab" onclick="showTab('sim',this)">Simulador</button>
+</div>
+
+<div class="main">
+
+  <!-- ══ TAB: PESOS ══ -->
+  <div class="section active" id="tab-pesos">
+    <div class="pesos-intro">
+      <h2>Como o score familiar é calculado</h2>
+      <p>O modelo pondera o membro de maior risco com peso dominante (60%), soma os riscos dos demais membros (30%) e adiciona um bônus de vulnerabilidade acumulada (10%). Multiplicadores de alerta ampliam o score quando há eventos clínicos recentes.</p>
+    </div>
+
+    <div class="formula-box">
+      <strong>Fórmula do Score Familiar</strong><br>
+      <div class="formula-line">Score = MAX(membros) × 0,60 + SOMA(demais) × 0,30 + Bônus × 0,10</div>
+      <span style="color:var(--text3)">Bônus: +10 por cada membro adicional com risco alto ou crítico (máx. 30 pts)</span><br>
+      <span style="color:var(--text3)">Score individual com alerta: score_base × multiplicador_de_alerta</span><br>
+      <span style="color:var(--text3)">Score final normalizado em escala de 0 a 100</span>
+    </div>
+
+    <div class="pesos-grid">
+
+      <div class="pesos-card">
+        <div class="pesos-card-header">
+          <span>Score base por condição</span>
+          <span style="color:var(--text3)">0 – 100 pts</span>
+        </div>
+        <div id="pesos-conditions"></div>
+      </div>
+
+      <div class="pesos-card">
+        <div class="pesos-card-header">
+          <span>Multiplicadores de alerta</span>
+          <span style="color:var(--text3)">× fator</span>
+        </div>
+        <div class="mult-row"><span class="cond">Internação / emergência recente</span><span class="mult-val">× 1,50</span></div>
+        <div class="mult-row"><span class="cond">Abandono de medicação</span><span class="mult-val">× 1,40</span></div>
+        <div class="mult-row"><span class="cond">Falta em consulta agendada</span><span class="mult-val">× 1,30</span></div>
+        <div class="mult-row"><span class="cond">Atraso vacinal</span><span class="mult-val">× 1,20</span></div>
+        <div class="mult-row"><span class="cond">Sem visita há mais de 30 dias</span><span class="mult-val">× 1,15</span></div>
+        <div class="mult-row"><span class="cond">Sem visita há mais de 15 dias (médio risco)</span><span class="mult-val">× 1,10</span></div>
+        <div class="mult-row" style="border-bottom:none"><span class="cond">Egresso de internação recente</span><span class="mult-val">× 1,35</span></div>
+      </div>
+
+      <div class="pesos-card" style="grid-column: 1 / -1">
+        <div class="pesos-card-header">
+          <span>Frequência de visita recomendada por faixa de score</span>
+        </div>
+        <div class="pesos-row">
+          <span class="cond"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--crit);margin-right:8px;vertical-align:middle"></span>Crítico — Score 81–100</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--crit)">Visita semanal obrigatória · Busca ativa imediata em alertas</span>
+        </div>
+        <div class="pesos-row">
+          <span class="cond"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--high);margin-right:8px;vertical-align:middle"></span>Alta — Score 61–80</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--high)">Visita quinzenal · Atenção a eventos de saúde</span>
+        </div>
+        <div class="pesos-row">
+          <span class="cond"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--med);margin-right:8px;vertical-align:middle"></span>Média — Score 41–60</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--med)">Visita mensal · Monitorar alertas</span>
+        </div>
+        <div class="pesos-row" style="border-bottom:none">
+          <span class="cond"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--low);margin-right:8px;vertical-align:middle"></span>Habitual — Score 0–40</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--low)">Visita mensal de rotina · Atualização cadastral</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: FILA ══ -->
+  <div class="section" id="tab-fila">
+    <div class="fila-header">
+      <div>
+        <h2>Fila de prioridade — 8 famílias</h2>
+        <p>Exemplos simulados com membros reais da APS. Clique para expandir.</p>
+      </div>
+      <div class="sort-controls">
+        <button class="sort-btn active" onclick="sortFamilies('score',this)">Score ↓</button>
+        <button class="sort-btn" onclick="sortFamilies('alpha',this)">Nome A–Z</button>
+      </div>
+    </div>
+    <div class="family-list" id="family-list"></div>
+  </div>
+
+  <!-- ══ TAB: SIMULADOR ══ -->
+  <div class="section" id="tab-sim">
+    <div class="sim-layout">
+      <div class="sim-panel">
+        <h2>Simule uma família</h2>
+        <p>Adicione membros do domicílio, selecione condições de saúde e alertas ativos. O score familiar é calculado em tempo real.</p>
+
+        <div class="add-member-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nome / identificação</label>
+              <input type="text" id="sim-name" placeholder="Ex: Mãe, Filho 1..." maxlength="24">
+            </div>
+            <div class="form-group">
+              <label>Condição de saúde</label>
+              <select id="sim-cond"></select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Alerta ativo</label>
+              <select id="sim-alert">
+                <option value="1">Sem alerta</option>
+                <option value="1.5">Internação / emergência recente (×1,50)</option>
+                <option value="1.4">Abandono de medicação (×1,40)</option>
+                <option value="1.35">Egresso de internação (×1,35)</option>
+                <option value="1.3">Falta em consulta (×1,30)</option>
+                <option value="1.2">Atraso vacinal (×1,20)</option>
+                <option value="1.15">Sem visita +30 dias (×1,15)</option>
+              </select>
+            </div>
+            <div class="form-group" style="justify-content:flex-end">
+              <label>&nbsp;</label>
+              <button class="add-btn" onclick="addSimMember()">+ Adicionar membro</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sim-members" id="sim-members">
+          <div class="empty-state" id="sim-empty">Nenhum membro adicionado ainda.</div>
+        </div>
+      </div>
+
+      <div class="sim-result">
+        <h3>Score da família</h3>
+        <div class="big-score" id="big-score">
+          <span class="num" style="color:var(--text3)">—</span>
+          <span class="label" style="color:var(--text3)">aguardando membros</span>
+          <div class="freq-rec" id="freq-rec"></div>
+        </div>
+        <div class="breakdown-list" id="breakdown-list">
+          <div style="color:var(--text3);font-size:11px;text-align:center;padding:1rem 0">Adicione membros para ver o cálculo.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <span>SMS-Rio · Hackathon 2026 · ACS Decision Support</span>
+  <span>Fonte: Ficha A SIAB/SISAB · Protocolos clínicos SMS-Rio</span>
+</div>
+
+<script>
+/* ═══════════════════════ DATA ═══════════════════════ */
+const CONDITIONS = [
+  { id:'tb',   label:'Tuberculose em tratamento (TDO)', score:100, tier:'crit' },
+  { id:'grav_ar', label:'Gestante — alto risco',        score:95,  tier:'crit' },
+  { id:'puer', label:'Puerpério (1ª semana pós-alta)',  score:90,  tier:'crit' },
+  { id:'desp', label:'Criança desnutrida (0–2a)',       score:85,  tier:'crit' },
+  { id:'acam', label:'Pessoa acamada / deficiente',     score:80,  tier:'crit' },
+  { id:'drug', label:'Usuário de drogas / sem renda',   score:75,  tier:'crit' },
+  { id:'smt',  label:'Saúde mental — em crise',         score:70,  tier:'crit' },
+  { id:'idf',  label:'Idoso frágil / acamado',          score:65,  tier:'high' },
+  { id:'hadas',label:'HAS / DM descompensado',          score:60,  tier:'high' },
+  { id:'mono', label:'Família monoparental em vulner.', score:50,  tier:'med'  },
+  { id:'grav_h',label:'Gestante — risco habitual',      score:40,  tier:'med'  },
+  { id:'cr02', label:'Criança 0–2a saudável',           score:35,  tier:'med'  },
+  { id:'hadc', label:'HAS / DM compensado',             score:25,  tier:'low'  },
+  { id:'saud', label:'Sem condição especial',           score:10,  tier:'low'  },
+];
+
+const TIER_COLORS = { crit:'var(--crit)', high:'var(--high)', med:'var(--med)', low:'var(--low)' };
+const TIER_LABELS = { crit:'Crítico', high:'Alta prioridade', med:'Média prioridade', low:'Habitual' };
+const TIER_FREQ   = { crit:'Visita semanal obrigatória', high:'Visita quinzenal', med:'Visita mensal com atenção a alertas', low:'Visita mensal de rotina' };
+
+/* ═══════════════════════ SCORING ═══════════════════════ */
+function calcFamilyScore(members) {
+  if (!members.length) return { score:0, tier:'low', max:0, rest:0, bonus:0 };
+  const scores = members.map(m => {
+    const base = CONDITIONS.find(c=>c.id===m.condId)?.score || 0;
+    return Math.min(base * m.mult, 100);
+  });
+  scores.sort((a,b)=>b-a);
+  const max = scores[0];
+  const rest = scores.slice(1).reduce((s,v)=>s+v, 0);
+  const highCount = members.filter(m => {
+    const tier = CONDITIONS.find(c=>c.id===m.condId)?.tier;
+    return tier==='crit'||tier==='high';
+  }).length;
+  const bonus = Math.min((Math.max(highCount-1,0))*10, 30);
+  const raw = max*0.6 + rest*0.3 + bonus*0.1;
+  const score = Math.round(Math.min(raw, 100));
+  const tier = score>=81?'crit':score>=61?'high':score>=41?'med':'low';
+  return { score, tier, max:Math.round(max), rest:Math.round(rest), bonus };
+}
+
+/* ═══════════════════════ FAMILIES DATA ═══════════════════════ */
+const FAMILIES = [
+  {
+    name:'Família Silva',
+    addr:'Rua das Laranjeiras, 12 — Ap. 3',
+    members:[
+      { name:'Ana (mãe, 31a)', condId:'grav_ar', mult:1.3,  alertLabel:'Falta em pré-natal' },
+      { name:'Carlos (pai, 34a)', condId:'hadas', mult:1.0,  alertLabel:null },
+      { name:'Dona Conceição (avó, 68a)', condId:'idf', mult:1.5, alertLabel:'Internação recente' },
+      { name:'Pedro (filho, 4a)',  condId:'saud', mult:1.0,  alertLabel:null },
+    ],
+    action:'Visita esta semana prioritária. Gestante com falta em pré-natal + avó com internação recente = dois alertas simultâneos. Acionar equipe clínica para acompanhar gestante.'
+  },
+  {
+    name:'Família Pereira',
+    addr:'Estrada do Engenho, 45',
+    members:[
+      { name:'Seu Raimundo (avô, 61a)', condId:'tb', mult:1.0, alertLabel:null },
+      { name:'Lucas (filho, 19a)', condId:'smt', mult:1.4, alertLabel:'Abandono de medicação' },
+      { name:'Rita (mãe, 44a)',    condId:'hadc',mult:1.0, alertLabel:null },
+    ],
+    action:'TB em TDO é prioridade absoluta — visita diária obrigatória. Saúde mental com abandono de medicação exige acionamento imediato do CAPS. Score familiar elevado por dois membros críticos.'
+  },
+  {
+    name:'Família Rodrigues',
+    addr:'Beco do Açaí, 8',
+    members:[
+      { name:'Karolina (mãe solo, 26a)', condId:'mono', mult:1.0, alertLabel:null },
+      { name:'Beatriz (filha, 1a)',       condId:'desp', mult:1.2, alertLabel:'Atraso vacinal' },
+      { name:'Miriam (avó, 59a)',         condId:'idf',  mult:1.0, alertLabel:null },
+      { name:'Mateus (filho, 5a)',        condId:'saud', mult:1.0, alertLabel:null },
+      { name:'Júnior (filho, 7a)',        condId:'saud', mult:1.0, alertLabel:null },
+    ],
+    action:'Criança desnutrida com atraso vacinal é urgência. Família monoparental com avó frágil eleva o bônus de vulnerabilidade. Verificar caderneta de vacinação e curva de peso na próxima visita.'
+  },
+  {
+    name:'Família Oliveira',
+    addr:'Rua São Cristóvão, 201 — Bl. B',
+    members:[
+      { name:'Fernanda (gestante, 29a)', condId:'grav_h', mult:1.3, alertLabel:'Falta em pré-natal' },
+      { name:'Jorge (marido, 32a)',      condId:'saud',   mult:1.0, alertLabel:null },
+    ],
+    action:'Gestante de risco habitual com falta ao pré-natal requer busca ativa imediata. Reclassificar risco da gestante caso não compareça ao próximo agendamento.'
+  },
+  {
+    name:'Família Mendonça',
+    addr:'Travessa da Liberdade, 33',
+    members:[
+      { name:'Alzira (71a)',      condId:'idf',  mult:1.35, alertLabel:'Egresso de internação' },
+      { name:'Gilberto (74a)',    condId:'hadas',mult:1.15, alertLabel:'Sem visita +30 dias' },
+      { name:'Vanessa (filha, 45a)', condId:'hadc', mult:1.0, alertLabel:null },
+    ],
+    action:'Casal idoso com dois alertas simultâneos. Idosa com internação recente + marido hipertenso descompensado sem visita há mais de 30 dias. Visita quinzenal mínima com avaliação de risco de queda.'
+  },
+  {
+    name:'Família Santos',
+    addr:'Rua do Campo, 77',
+    members:[
+      { name:'Tereza (pós-parto, 23a)', condId:'puer', mult:1.0, alertLabel:null },
+      { name:'Bebê Ana (4 dias)',       condId:'cr02', mult:1.0, alertLabel:null },
+      { name:'Marcos (pai, 27a)',       condId:'saud', mult:1.0, alertLabel:null },
+    ],
+    action:'Puerpério na 1ª semana — visita obrigatória esta semana. Verificar teste do pezinho do recém-nascido e sinais de depressão pós-parto. Alta prioridade por prazo curto e dano potencial irreversível.'
+  },
+  {
+    name:'Família Barbosa',
+    addr:'Av. Principal, 500 — Casa 2',
+    members:[
+      { name:'Roberto (52a)', condId:'hadc', mult:1.3, alertLabel:'Falta em consulta' },
+      { name:'Sueli (49a)',   condId:'hadc', mult:1.0, alertLabel:null },
+    ],
+    action:'Casal com DM/HAS compensado, mas Roberto com falta em consulta recente. Risco de descompensação. Busca ativa esta semana e verificação de medicação.'
+  },
+  {
+    name:'Família Costa',
+    addr:'Rua Nova, 12',
+    members:[
+      { name:'Paulo (38a)',    condId:'saud', mult:1.0, alertLabel:null },
+      { name:'Cláudia (36a)', condId:'saud', mult:1.0, alertLabel:null },
+      { name:'Davi (8a)',     condId:'saud', mult:1.0, alertLabel:null },
+    ],
+    action:'Família sem condições especiais de vulnerabilidade. Visita mensal de rotina e atualização cadastral. Verificar se há novas condições de saúde desde a última visita.'
+  },
+];
+
+/* ═══════════════════════ RENDER PESOS ═══════════════════════ */
+function renderPesos() {
+  const container = document.getElementById('pesos-conditions');
+  CONDITIONS.forEach(c => {
+    const pct = c.score;
+    const color = TIER_COLORS[c.tier];
+    container.innerHTML += `
+      <div class="pesos-row">
+        <span class="cond">${c.label}</span>
+        <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${color}"></div></div>
+        <span class="score-val" style="color:${color}">${pct}</span>
+      </div>`;
+  });
+}
+
+/* ═══════════════════════ RENDER FAMILIES ═══════════════════════ */
+function renderFamilies(order='score') {
+  const list = document.getElementById('family-list');
+  list.innerHTML = '';
+
+  const scored = FAMILIES.map(f => {
+    const res = calcFamilyScore(f.members);
+    return { ...f, ...res };
+  });
+
+  if (order==='score') scored.sort((a,b)=>b.score-a.score);
+  else scored.sort((a,b)=>a.name.localeCompare(b.name));
+
+  scored.forEach((f, idx) => {
+    const { score, tier, max, rest, bonus } = f;
+    const color = TIER_COLORS[tier];
+    const circ = 2*Math.PI*22;
+    const dash = (score/100)*circ;
+
+    const memberPips = f.members.map(m => {
+      const cond = CONDITIONS.find(c=>c.id===m.condId);
+      const t = cond?.tier||'low';
+      const label = m.name.split(' ')[0];
+      return `<span class="member-pip ${t}">${label}</span>`;
+    }).join('');
+
+    const memberRows = f.members.map(m => {
+      const cond = CONDITIONS.find(c=>c.id===m.condId);
+      const indScore = Math.round(Math.min((cond?.score||0)*m.mult, 100));
+      const tierC = TIER_COLORS[cond?.tier||'low'];
+      const alertHtml = m.alertLabel
+        ? `<span class="alert-flag" style="background:rgba(255,140,0,.12);color:var(--high);border:1px solid rgba(255,140,0,.25)">${m.alertLabel} ×${m.mult}</span>` : '';
+      return `<tr>
+        <td><div class="m-name">${m.name}${alertHtml}</div><div class="m-detail">${cond?.label||''}</div></td>
+        <td><span style="font-family:var(--mono);font-size:12px;font-weight:500;color:${tierC}">${indScore}</span></td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${TIER_LABELS[cond?.tier||'low']}</td>
+      </tr>`;
+    }).join('');
+
+    const card = document.createElement('div');
+    card.className = 'family-card';
+    card.style.animationDelay = `${idx*0.04}s`;
+    card.innerHTML = `
+      <div class="fc-main ${tier}" onclick="toggleCard(this.parentElement)">
+        <div class="fc-rank"><span class="num">${idx+1}</span>°</div>
+        <div class="fc-info">
+          <div class="name">${f.name}</div>
+          <div class="addr">${f.addr} · ${f.members.length} membros</div>
+          <div class="members-preview">${memberPips}</div>
+        </div>
+        <div class="fc-score-wrap">
+          <div class="score-ring">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="3"/>
+              <circle cx="28" cy="28" r="22" fill="none" stroke="${color}" stroke-width="3"
+                stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"/>
+            </svg>
+            <div class="score-text" style="color:${color}">${score}</div>
+          </div>
+          <div class="score-label ${tier}">${TIER_LABELS[tier]}</div>
+        </div>
+        <div class="fc-freq">
+          <span class="freq-chip ${tier}">${TIER_FREQ[tier].split('·')[0].trim()}</span>
+        </div>
+        <div class="fc-toggle">+</div>
+      </div>
+      <div class="fc-body">
+        <table class="members-table">
+          <thead><tr><th>Membro</th><th>Score ind.</th><th>Nível</th></tr></thead>
+          <tbody>${memberRows}</tbody>
+        </table>
+        <div class="score-breakdown">
+          <div class="sb-line"><span>Membro dominante (×0,60)</span><span class="sb-val">${max} × 0,60 = ${Math.round(max*0.6)}</span></div>
+          <div class="sb-line"><span>Demais membros (×0,30)</span><span class="sb-val">${rest} × 0,30 = ${Math.round(rest*0.3)}</span></div>
+          <div class="sb-line"><span>Bônus vulnerabilidade (×0,10)</span><span class="sb-val">${bonus} × 0,10 = ${Math.round(bonus*0.1)}</span></div>
+          <div class="sb-line total"><span>Score familiar</span><span>${score} / 100</span></div>
+        </div>
+        <div class="action-row"><strong>Ação recomendada:</strong> ${f.action}</div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function toggleCard(card) { card.classList.toggle('open'); }
+
+function sortFamilies(order, btn) {
+  document.querySelectorAll('.sort-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderFamilies(order);
+}
+
+/* ═══════════════════════ SIMULADOR ═══════════════════════ */
+let simMembers = [];
+
+function initSim() {
+  const sel = document.getElementById('sim-cond');
+  CONDITIONS.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.label;
+    sel.appendChild(opt);
+  });
+}
+
+function addSimMember() {
+  const name = document.getElementById('sim-name').value.trim() || `Membro ${simMembers.length+1}`;
+  const condId = document.getElementById('sim-cond').value;
+  const mult = parseFloat(document.getElementById('sim-alert').value);
+  const alertSel = document.getElementById('sim-alert');
+  const alertLabel = alertSel.options[alertSel.selectedIndex].text;
+
+  simMembers.push({ name, condId, mult, alertLabel: mult>1?alertLabel:null });
+  document.getElementById('sim-name').value = '';
+  renderSim();
+}
+
+function removeSim(idx) {
+  simMembers.splice(idx,1);
+  renderSim();
+}
+
+function renderSim() {
+  const container = document.getElementById('sim-members');
+  const empty = document.getElementById('sim-empty');
+
+  if (!simMembers.length) {
+    container.innerHTML = '<div class="empty-state" id="sim-empty">Nenhum membro adicionado ainda.</div>';
+    document.getElementById('big-score').innerHTML = `<span class="num" style="color:var(--text3)">—</span><span class="label" style="color:var(--text3)">aguardando membros</span>`;
+    document.getElementById('breakdown-list').innerHTML = `<div style="color:var(--text3);font-size:11px;text-align:center;padding:1rem 0">Adicione membros para ver o cálculo.</div>`;
+    return;
+  }
+
+  container.innerHTML = simMembers.map((m,i) => {
+    const cond = CONDITIONS.find(c=>c.id===m.condId);
+    const indScore = Math.round(Math.min((cond?.score||0)*m.mult, 100));
+    const color = TIER_COLORS[cond?.tier||'low'];
+    return `<div class="sim-member">
+      <div class="sm-info">
+        <div class="sm-name">${m.name}</div>
+        <div class="sm-cond">${cond?.label||''} ${m.mult>1?`· alerta ×${m.mult}`:''}</div>
+      </div>
+      <span class="sm-score" style="background:${color}22;color:${color}">${indScore}</span>
+      <button class="sm-del" onclick="removeSim(${i})">×</button>
+    </div>`;
+  }).join('');
+
+  const res = calcFamilyScore(simMembers);
+  const color = TIER_COLORS[res.tier];
+
+  document.getElementById('big-score').innerHTML = `
+    <span class="num" style="color:${color}">${res.score}</span>
+    <span class="label" style="color:${color}">${TIER_LABELS[res.tier]}</span>
+    <div class="freq-rec" style="color:var(--text2);margin-top:.5rem;font-size:13px">${TIER_FREQ[res.tier]}</div>`;
+
+  document.getElementById('breakdown-list').innerHTML = `
+    <div class="breakdown-list">
+      <div class="bl-row"><span>Membro dominante (×0,60)</span><span>${res.max} × 0,60 = ${Math.round(res.max*0.6)}</span></div>
+      <div class="bl-row"><span>Demais membros (×0,30)</span><span>${res.rest} × 0,30 = ${Math.round(res.rest*0.3)}</span></div>
+      <div class="bl-row"><span>Bônus vulnerabilidade (×0,10)</span><span>${res.bonus} × 0,10 = ${Math.round(res.bonus*0.1)}</span></div>
+      <div class="bl-row total"><span>Score familiar</span><span style="color:${color}">${res.score} / 100</span></div>
+    </div>`;
+}
+
+/* ═══════════════════════ TABS ═══════════════════════ */
+function showTab(id, btn) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+id).classList.add('active');
+}
+
+/* ═══════════════════════ INIT ═══════════════════════ */
+renderPesos();
+renderFamilies('score');
+initSim();
+</script>
+</body>
+</html>
