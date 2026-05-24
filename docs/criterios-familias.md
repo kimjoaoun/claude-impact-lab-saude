@@ -61,24 +61,35 @@ Isso garante que a primeira render não venha aleatória e que a ordem reflita u
 
 Função: `selecao_dia` (`app/lib/data.py:200`). Recebe o panel territorialmente ordenado e produz uma lista de tamanho `N` (padrão `n_dia = 12`, slider 5–25).
 
-A seleção monta a lista combinando **quatro pilhas em ordem de prioridade**, e dentro de cada pilha reordena por `priority_band` (alta → média → baixa):
+A seleção monta a lista combinando **três pilhas em ordem de prioridade**, e dentro de cada pilha reordena por `priority_band` (alta → média → baixa). Antes das pilhas, **domicílios com cadência mensal cumprida são excluídos do pool** (ver "Cooldown mensal" abaixo):
 
 ```
-forced_front  +  follow-ups  +  frescos  +  cooldown_tail
-                                                          [:N]
+exclude_pids = atendidos no mês (calendário) — exceto forced_front
+ranked = forced_front  +  follow-ups  +  frescos
+return ranked[:N]
 ```
 
 | Pilha            | Quem entra                                                                                          |
 |------------------|------------------------------------------------------------------------------------------------------|
-| `forced_front`   | Reoferta forçada de alta prioridade da semana (§6).                                                  |
+| `forced_front`   | Reoferta forçada de alta prioridade do mês (§6). Fura a exclusão mensal.                            |
 | `follow-ups`     | Domicílios cujo último status (snapshot anterior) é `não atendeu` ou `recusou atendimento`.          |
-| `frescos`        | Resto do panel que **não** foi atendido nessa semana.                                                |
-| `cooldown_tail`  | Domicílios atendidos em outro dia da mesma semana — vão para o fim.                                  |
+| `frescos`        | Resto do panel que **não** foi atendido neste mês.                                                  |
+
+### Cooldown mensal (exclusão dura)
+
+Cada domicílio recebe ~1 visita por mês calendário. Se um domicílio foi atendido neste mês (do dia 1 até o dia anterior ao `selected_date`), ele é **excluído** do panel — não entra no fim, simplesmente não aparece. Implementado via `month_fulfilled_pids` (`app/streamlit_app.py`) + `exclude_pids` em `selecao_dia` (`app/lib/data.py`).
+
+Conta como "atendido no mês":
+- status agregado `atendeu`, **ou**
+- status agregado `parcialmente atendeu` **sem** `has_partial_priority_gap` (parcial em que nenhum membro prioritário ficou de fora).
+
+Não conta (continuam elegíveis):
+- `parcialmente atendeu` com gap de prioritário — o domicílio volta porque a parte que importa não foi feita;
+- `não atendeu`, `recusou atendimento`, `pendente`.
 
 Detalhes:
 
-- **Cooldown semanal**: se um domicílio foi marcado `atendeu` em qualquer snapshot da semana corrente (`week_start` até ontem), entra no `cooldown_tail` (`app/streamlit_app.py:498-501`).
-- **Forced front** (`app/streamlit_app.py:502-512`): domicílios de banda `alta` com snapshot da semana indicando `STATUS_NO_SHOW` **ou** "gap parcial de prioritário" (algum `priority_member_id` ficou sem ser atendido, mesmo que a família esteja marcada como atendida). Garante que casos altos não atendidos voltem para o topo.
+- **Forced front** (`app/streamlit_app.py` no bloco de geração inicial): domicílios de banda `alta` com snapshot do mês indicando `STATUS_NO_SHOW` **ou** "gap parcial de prioritário". Furam a exclusão mensal e sobem para o topo absoluto.
 - **Dentro de cada pilha** a ordem territorial (nearest-neighbor) é preservada, mas `_by_priority` puxa primeiro `alta`, depois `média`, depois `baixa`. Ou seja: **prioridade reordena dentro do bloco, sem misturar blocos**.
 
 ## 6. Rerank no-show (princípio)
@@ -133,10 +144,10 @@ OSRM recebe `coordinates = [UBS, ...ordem_filtrada]` com `?steps=false`, **sem `
 
 ## Resumo em uma frase
 
-> Para cada cluster territorial (proxy de ACS), o app monta a lista do dia varrendo o panel em nearest-neighbor desde a UBS, e reordena empurrando para o topo: (1) altas prioridades com no-show ou gap parcial recente, (2) follow-ups do dia anterior, e (3) ordenando cada bloco por banda `alta > média > baixa`; quem foi atendido na semana vai para o fim; durante o dia, no-shows disparam substituto off-list por detour mínimo dentro de um corredor de 300m.
+> Para cada cluster territorial (proxy de ACS), o app monta a lista do dia varrendo o panel em nearest-neighbor desde a UBS; quem já recebeu visita cumprida neste mês calendário **fica fora** do panel (cadência mensal), salvo se for alta prioridade com no-show ou gap parcial — esses sobem para o topo via `forced_front`. Em seguida vêm os follow-ups do dia anterior e os domicílios frescos, cada bloco ordenado por banda `alta > média > baixa`. Durante o dia, no-shows disparam substituto off-list por detour mínimo dentro de um corredor de 300m.
 
 ## Arquivos críticos
 
 - `app/lib/data.py` — `add_id_familia_sint`, `clusterizar`, `lista_inicial`, `selecao_dia`, `find_substitute_by_detour`.
-- `app/streamlit_app.py` — `classify_family_priority`, `is_priority_member`, `weekly_family_outcomes`, `derive_family_status`, `build_family_panel`, geração de `forced_front_pids` / `cooldown_pids` (linhas ~485-521).
-- `app/lib/state.py` — `latest_prior_snapshot`, `snapshots_in_range` (insumos para rerank e cooldown).
+- `app/streamlit_app.py` — `classify_family_priority`, `is_priority_member`, `family_outcomes_in_range`, `month_fulfilled_pids`, `month_start`, `derive_family_status`, `build_family_panel`, geração de `forced_front_pids` / `exclude_pids` no bloco inicial de seleção.
+- `app/lib/state.py` — `latest_prior_snapshot`, `snapshots_in_range` (insumos para rerank e cadência mensal).

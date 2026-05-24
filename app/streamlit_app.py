@@ -97,21 +97,7 @@ def compute_family_statuses(member_statuses: dict[str, dict[str, str]]) -> dict[
         for fid, member_map in member_statuses.items()
     }
 
-st.set_page_config(page_title="Rota ACS — dia", layout="wide")
-
-st.markdown(
-    """
-    # 🚶 Rota do dia — ACS
-
-    ACS sai da UBS com uma lista priorizada, **reordena livremente** no campo, e marca
-    cada visita como atendido / não atendido. A rota no mapa segue a ordem do ACS
-    (não reotimiza — `/route` do OSRM com waypoints fixos).
-
-    > ⚠️ Coordenadas com ruído de anonimização (~100m + shuffle por equipe). Rotas e
-    > durações são metodológicas, não operacionais. OSM mapeia mal vielas/escadarias
-    > em comunidades.
-    """
-)
+st.set_page_config(page_title="Radar Família", layout="wide")
 
 TODAY = date.today()
 SELECTED_DATE_KEY = "selected_date"
@@ -176,6 +162,10 @@ def week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+def month_start(d: date) -> date:
+    return d.replace(day=1)
+
+
 def _safe_max_date(values: list[str | None]) -> str | None:
     valid = [v for v in values if v]
     return max(valid) if valid else None
@@ -209,12 +199,12 @@ def is_priority_member(member: dict) -> bool:
     )
 
 
-def weekly_family_outcomes(
-    week_snaps: list[dict],
+def family_outcomes_in_range(
+    snaps: list[dict],
     family_lookup: dict[str, dict],
 ) -> dict[str, dict]:
     latest: dict[str, dict] = {}
-    for snap in week_snaps:
+    for snap in snaps:
         snap_date = snap.get("dia")
         for fid, family_status in snap.get("status", {}).items():
             member_status = snap.get("member_status", {}).get(fid, {})
@@ -223,12 +213,27 @@ def weekly_family_outcomes(
                 normalize_status(member_status.get(member_pid)) != STATUS_ATENDIDO
                 for member_pid in priority_members
             )
+            derived = derive_family_status(member_status) if member_status else normalize_status(family_status)
             latest[fid] = {
                 "date": snap_date,
-                "status": normalize_status(family_status),
+                "status": derived,
                 "has_partial_priority_gap": has_partial_priority_gap,
             }
     return latest
+
+
+def month_fulfilled_pids(monthly_outcomes: dict[str, dict]) -> set[str]:
+    fulfilled: set[str] = set()
+    for fid, outcome in monthly_outcomes.items():
+        if outcome["status"] == STATUS_ATENDIDO:
+            fulfilled.add(fid)
+        elif outcome["status"] == STATUS_PARCIAL and not outcome.get("has_partial_priority_gap"):
+            fulfilled.add(fid)
+    return fulfilled
+
+
+# alias para snapshots de chamada antiga
+weekly_family_outcomes = family_outcomes_in_range
 
 
 def _member_detail(
@@ -314,6 +319,156 @@ def build_family_panel(
     return pd.DataFrame(rows), family_lookup
 
 
+def build_print_html(
+    *,
+    equipe_id: str,
+    cluster_id: int,
+    acs_label: str,
+    selected_date: date,
+    ubs_lat: float,
+    ubs_lon: float,
+    ordem: list[str],
+    family_lookup: dict[str, dict],
+    coords_lookup: dict[str, dict],
+    status: dict[str, str],
+    substitutes: dict[str, str | None],
+    route_geom: dict | None,
+    route_dur_s: float,
+    route_dist_m: float,
+) -> str:
+    import html as _html
+
+    subst_pids = {v for v in substitutes.values() if v}
+
+    # Mapa Folium isolado (UBS + numerados + polyline da rota).
+    print_map = folium.Map(
+        location=[ubs_lat, ubs_lon], zoom_start=14, tiles="CartoDB positron",
+    )
+    folium.Marker(
+        location=[ubs_lat, ubs_lon],
+        icon=folium.Icon(color="black", icon="plus-sign"),
+        popup="UBS",
+    ).add_to(print_map)
+    for i, pid in enumerate(ordem, start=1):
+        c = coords_lookup[pid]
+        color = STATUS_COLOR.get(status.get(pid, STATUS_PENDENTE), "#6c757d")
+        folium.CircleMarker(
+            location=[c["lat"], c["lon"]],
+            radius=10, color=color, fill=True, fill_opacity=0.85, weight=2,
+        ).add_to(print_map)
+        folium.map.Marker(
+            [c["lat"], c["lon"]],
+            icon=folium.DivIcon(
+                icon_size=(20, 20), icon_anchor=(10, 10),
+                html=f'<div style="font-size:10px;color:white;text-align:center;font-weight:bold">{i}</div>',
+            ),
+        ).add_to(print_map)
+    if route_geom is not None:
+        latlon = [(lat, lon) for lon, lat in route_geom["coordinates"]]
+        folium.PolyLine(locations=latlon, color="#4363d8", weight=4, opacity=0.7).add_to(print_map)
+
+    map_html = print_map.get_root().render()
+    map_srcdoc = _html.escape(map_html, quote=True)
+
+    rows_html = []
+    for i, pid in enumerate(ordem, start=1):
+        fam = family_lookup[pid]
+        cur_status = status.get(pid, STATUS_PENDENTE)
+        color = STATUS_COLOR.get(cur_status, "#6c757d")
+        prefix = "🔁 " if pid in subst_pids else ""
+
+        member_items = []
+        priority_set = set(fam["priority_member_ids"])
+        for m in fam["members"]:
+            m_flags = []
+            if m.get("gestacao"):
+                m_flags.append("gestação")
+            if m.get("diabetico"):
+                m_flags.append("DM")
+            if m.get("hipertenso"):
+                m_flags.append("HAS")
+            if m.get("vulnerabilidade"):
+                m_flags.append(f"vuln:{m['vulnerabilidade']}")
+            tag = " <b>★ prioritário</b>" if m["paciente_id"] in priority_set else ""
+            sexo = m.get("sexo") or "—"
+            faixa = m.get("faixa_etaria") or "—"
+            flags_str = f" — {' / '.join(m_flags)}" if m_flags else ""
+            member_items.append(
+                f"<li><span class='mono'>{_html.escape(str(m['paciente_id'])[:10])}…</span> "
+                f"{_html.escape(str(sexo))} · {_html.escape(str(faixa))}{_html.escape(flags_str)}{tag}</li>"
+            )
+        members_html = "<ul class='members'>" + "".join(member_items) + "</ul>"
+
+        rows_html.append(
+            f"<tr>"
+            f"<td class='num'>{i:02d}</td>"
+            f"<td><b>{prefix}{_html.escape(fam['id_familia_sint'])}</b> "
+            f"<span class='muted'>· {fam['member_count']} morador(es) · {fam['priority_band']}</span>"
+            f"{members_html}</td>"
+            f"<td class='addr'></td>"
+            f"<td><span class='badge' style='background:{color}'>{_html.escape(cur_status)}</span></td>"
+            f"<td class='chk'>☐</td>"
+            f"</tr>"
+        )
+
+    duration_label = f"{route_dur_s/3600:.1f}h" if route_dur_s else "—"
+    distance_label = f"{route_dist_m/1000:.1f}km" if route_dist_m else "—"
+    gerado_em = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return f"""<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Rota — {_html.escape(equipe_id[:8])} · {_html.escape(acs_label)} · {selected_date.isoformat()}</title>
+<style>
+  body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 11pt; color: #222; margin: 16px; }}
+  h1 {{ font-size: 16pt; margin: 0 0 4px; }}
+  .chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }}
+  .chip {{ background: #eef; padding: 3px 8px; border-radius: 6px; font-size: 10pt; }}
+  iframe.map {{ width: 100%; height: 380px; border: 1px solid #ccc; border-radius: 6px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 10pt; }}
+  th, td {{ border: 1px solid #bbb; padding: 5px 7px; text-align: left; vertical-align: top; }}
+  th {{ background: #f0f0f0; }}
+  tr:nth-child(even) td {{ background: #fafafa; }}
+  td.num {{ text-align: center; width: 28px; font-weight: bold; }}
+  td.mono {{ font-family: ui-monospace, Menlo, monospace; font-size: 9pt; white-space: nowrap; }}
+  td.chk {{ text-align: center; font-size: 16pt; width: 28px; }}
+  td.addr {{ width: 28%; background: repeating-linear-gradient(to bottom, transparent 0, transparent 16px, #d0d0d0 16px, #d0d0d0 17px); min-height: 80px; }}
+  ul.members {{ margin: 4px 0 0 16px; padding: 0; font-size: 9pt; }}
+  ul.members li {{ margin: 1px 0; }}
+  .badge {{ color: white; padding: 2px 6px; border-radius: 4px; font-size: 9pt; white-space: nowrap; }}
+  .muted {{ color: #666; font-size: 9pt; }}
+  footer {{ margin-top: 16px; color: #888; font-size: 9pt; }}
+  .print-btn {{ position: fixed; top: 10px; right: 10px; padding: 8px 14px; background: #4363d8; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11pt; }}
+  @media print {{
+    @page {{ size: A4; margin: 12mm; }}
+    .no-print {{ display: none !important; }}
+    tr {{ page-break-inside: avoid; }}
+    iframe.map {{ height: 320px; }}
+  }}
+</style></head>
+<body>
+<button class="print-btn no-print" onclick="window.print()">🖨️ Imprimir</button>
+<h1>Rota do dia — {selected_date.isoformat()}</h1>
+<div class="chips">
+  <span class="chip">Equipe <b>{_html.escape(equipe_id[:8])}</b></span>
+  <span class="chip">{_html.escape(acs_label)}</span>
+  <span class="chip">{len(ordem)} paradas</span>
+  <span class="chip">Duração ≈ {duration_label}</span>
+  <span class="chip">Distância ≈ {distance_label}</span>
+</div>
+<iframe class="map" srcdoc="{map_srcdoc}" sandbox="allow-scripts allow-same-origin"></iframe>
+<table>
+  <thead><tr>
+    <th>#</th><th>Domicílio · membros</th><th>Endereço</th><th>Status (digital)</th><th>☑</th>
+  </tr></thead>
+  <tbody>{''.join(rows_html)}</tbody>
+</table>
+<footer>
+  Gerado em {gerado_em} — Radar Família (protótipo). Coordenadas com ruído de anonimização (~100m).
+  Status anotado à mão nesta folha é a versão de campo; o app só persiste o que for re-inserido digitalmente.
+</footer>
+</body></html>"""
+
+
 def family_popup_html(family: dict) -> str:
     member_lines = "".join(
         (
@@ -333,26 +488,15 @@ def family_popup_html(family: dict) -> str:
     </div>
     """
 
+
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("Configuração")
-    if not osrm_health():
-        st.error(
-            f"OSRM foot indisponível em `{OSRM_FOOT}`.\n\n"
-            "Rode: `cd routing && docker compose --profile routing up -d osrm-foot`"
-        )
-        st.stop()
-    st.success(f"OSRM foot ✓ ({OSRM_FOOT})")
+    st.markdown("### 📡 Radar Família")
+    st.caption("planejamento diário de visitas")
+    st.divider()
 
     equipes = load_equipes()
     pacientes_all = load_pacientes()
-
-    k_clusters = st.number_input("K clusters por equipe (= ACS)", min_value=1, max_value=20, value=8)
-    n_dia = st.slider("N domicílios na lista do dia", min_value=5, max_value=25, value=12)
-    st.caption(
-        "Seleção atual: top-N nearest-neighbor + boost de no-shows do dia anterior. "
-        "TODO: ranker real (risco + care-gap)."
-    )
 
     equipes_validas = sorted(
         set(equipes["equipe_id"]) & set(pacientes_all["equipe_id"].unique())
@@ -363,40 +507,63 @@ with st.sidebar:
         format_func=lambda eid: f"{eid[:8]}… ({(pacientes_all['equipe_id'] == eid).sum()} pacientes)",
     )
 
+    with st.expander("⚙️ Ajustes do dia", expanded=False):
+        k_clusters = st.number_input(
+            "Número de ACS na equipe",
+            min_value=1,
+            max_value=20,
+            value=8,
+            help="Como dividir os pacientes em micro-áreas, uma por ACS.",
+        )
+        n_dia = st.slider(
+            "Tamanho da lista do dia",
+            min_value=5,
+            max_value=25,
+            value=12,
+            help="Quantas famílias entram na lista priorizada de hoje.",
+        )
+        st.caption(
+            "Priorização atual combina proximidade da UBS, follow-up de quem "
+            "não foi atendido e cadência mensal (1 visita/mês por domicílio)."
+        )
+
     pacientes_eq = pacientes_all[pacientes_all["equipe_id"] == equipe_id].reset_index(drop=True)
     pacientes_eq = clusterizar(pacientes_eq, k=int(k_clusters))
 
+    cluster_ids_sorted = sorted(pacientes_eq["cluster_id"].unique())
+    acs_label_by_cluster = {cid: f"ACS {idx + 1}" for idx, cid in enumerate(cluster_ids_sorted)}
     cluster_id = st.selectbox(
-        "Cluster (panel hipotético do ACS)",
-        options=sorted(pacientes_eq["cluster_id"].unique()),
-        format_func=lambda c: f"cluster {c} ({(pacientes_eq['cluster_id'] == c).sum()} pac.)",
+        "ACS responsável",
+        options=cluster_ids_sorted,
+        format_func=lambda c: acs_label_by_cluster[c],
+    )
+    st.caption(
+        f"{acs_label_by_cluster[cluster_id]} · "
+        f"{(pacientes_eq['cluster_id'] == cluster_id).sum()} pacientes na micro-área"
     )
 
-    st.divider()
     if SELECTED_DATE_KEY not in st.session_state:
         st.session_state[SELECTED_DATE_KEY] = TODAY
+    selected_date = st.date_input("Dia da visita", key=SELECTED_DATE_KEY)
 
-    nav1, nav2 = st.columns(2)
-    if nav1.button("⬅︎ -1 dia"):
-        st.session_state[SELECTED_DATE_KEY] = st.session_state[SELECTED_DATE_KEY] - timedelta(days=1)
-        st.rerun()
-    if nav2.button("+1 dia ➡︎"):
-        st.session_state[SELECTED_DATE_KEY] = st.session_state[SELECTED_DATE_KEY] + timedelta(days=1)
-        st.rerun()
-
-    selected_date = st.date_input("📅 Dia", key=SELECTED_DATE_KEY)
-    if selected_date < TODAY:
-        st.caption("🕒 Dia passado — read-only")
-    elif selected_date > TODAY:
-        st.caption("📅 Planejamento futuro — editável")
-    else:
-        st.caption("📍 Hoje — editável")
-
-    if st.button("🔄 Resetar dia (in-memory)"):
-        for k in list(st.session_state.keys()):
-            if k.startswith("dia_"):
-                del st.session_state[k]
-        st.rerun()
+    with st.expander("🛠️ Diagnóstico", expanded=False):
+        if osrm_health():
+            st.success(f"OSRM foot disponível ({OSRM_FOOT})")
+        else:
+            st.error(
+                f"OSRM foot indisponível em `{OSRM_FOOT}`.\n\n"
+                "Rode: `cd routing && docker compose --profile routing up -d osrm-foot`"
+            )
+            st.stop()
+        if st.button(
+            "🔄 Recomeçar dia",
+            help="Descarta as marcações deste dia e gera a lista de novo.",
+            use_container_width=True,
+        ):
+            for k in list(st.session_state.keys()):
+                if k.startswith("dia_"):
+                    del st.session_state[k]
+            st.rerun()
 
 
 # ─── Resolve estado do dia selecionado ───────────────────────────────────────
@@ -486,22 +653,18 @@ else:
         prev_status = (
             {pid: normalize_status(s) for pid, s in prev["status"].items()} if prev else None
         )
-        cooldown_pids: set[str] = set()
-        week_snaps = snapshots_in_range(
+        month_snaps = snapshots_in_range(
             equipe_id,
             int(cluster_id),
             panel_key,
-            week_start(selected_date),
+            month_start(selected_date),
             selected_date - timedelta(days=1),
         )
-        weekly_outcomes = weekly_family_outcomes(week_snaps, family_lookup)
-        for snap in week_snaps:
-            for pid, snap_status in snap.get("status", {}).items():
-                if normalize_status(snap_status) == STATUS_ATENDIDO:
-                    cooldown_pids.add(pid)
+        monthly_outcomes = family_outcomes_in_range(month_snaps, family_lookup)
+        exclude_pids = month_fulfilled_pids(monthly_outcomes)
         forced_front_pids = {
             fid
-            for fid, outcome in weekly_outcomes.items()
+            for fid, outcome in monthly_outcomes.items()
             if family_lookup.get(fid, {}).get("priority_band") == FAMILY_PRIORITY_HIGH
             and (
                 outcome["status"] == STATUS_NO_SHOW
@@ -516,7 +679,7 @@ else:
             ubs["ubs_lon"],
             int(n_dia),
             prev_status,
-            cooldown_pids=cooldown_pids,
+            exclude_pids=exclude_pids,
             forced_front_pids=forced_front_pids,
         )
         member_status_inicial = build_member_statuses(family_lookup, ordem_inicial)
@@ -577,16 +740,17 @@ else:
             }
             auto_substitute_changed = True
             auto_substitute_toasts.append((
-                f"🔁 substituto (detour +{int(detour_m)}m): "
-                f"{label_lookup.get(sub_pid, sub_pid[:8])}",
+                f"🔁 Substituto encontrado para "
+                f"{label_lookup.get(trigger_pid, trigger_pid[:8])}: "
+                f"{label_lookup.get(sub_pid, sub_pid[:8])} "
+                f"(desvio +{int(detour_m)}m).",
                 None,
             ))
         else:
             auto_substitute_changed = True
             auto_substitute_toasts.append((
-                f"⚠️ sem substituto viável (corredor {int(SUBSTITUTE_CORRIDOR_M)}m / "
-                f"detour ≤{int(SUBSTITUTE_MAX_DETOUR_M)}m) pra "
-                f"{label_lookup.get(trigger_pid, trigger_pid[:8])}",
+                f"Nenhum substituto viável no caminho para "
+                f"{label_lookup.get(trigger_pid, trigger_pid[:8])} — siga sem substituir.",
                 "⚠️",
             ))
 
@@ -599,14 +763,75 @@ else:
     read_only = False
 
 
+# ─── Faixa de contexto (topo) ─────────────────────────────────────────────────
+if selected_date < TODAY:
+    date_badge = "🔒 dia passado"
+elif selected_date > TODAY:
+    date_badge = "📅 planejamento futuro"
+else:
+    date_badge = "📍 hoje"
+
+ctx_cols = st.columns([2, 2, 2, 2, 2])
+ctx_cols[0].markdown(
+    f"**{selected_date.strftime('%d/%m/%Y')}**  \n<span style='color:#6c757d;font-size:12px'>{date_badge}</span>",
+    unsafe_allow_html=True,
+)
+ctx_cols[1].markdown(
+    f"**Equipe**  \n<span style='font-family:monospace;font-size:12px'>{equipe_id[:10]}…</span>",
+    unsafe_allow_html=True,
+)
+ctx_cols[2].markdown(
+    f"**{acs_label_by_cluster[cluster_id]}**  \n<span style='color:#6c757d;font-size:12px'>{len(familias_panel)} domicílios na micro-área</span>",
+    unsafe_allow_html=True,
+)
+_n_total = len(ordem)
+_n_aten_ctx = sum(1 for s in status.values() if s == STATUS_ATENDIDO)
+ctx_cols[3].markdown(
+    f"**Progresso**  \n<span style='color:#6c757d;font-size:12px'>{_n_aten_ctx}/{_n_total} atendidos</span>",
+    unsafe_allow_html=True,
+)
+_save_placeholder = ctx_cols[4].empty()
+_save_placeholder.markdown(
+    "<div style='text-align:right;color:#6c757d;font-size:12px'>—</div>",
+    unsafe_allow_html=True,
+)
+if _n_total:
+    st.progress(_n_aten_ctx / _n_total)
+
+with st.expander("ℹ️ Sobre os dados e a rota", expanded=False):
+    st.markdown(
+        "Coordenadas têm ruído de anonimização (~100m + embaralhamento por equipe). "
+        "Rotas e durações são metodológicas, não operacionais — OSM costuma mapear "
+        "mal vielas e escadarias em comunidades. A rota segue a ordem definida pelo "
+        "ACS (sem reotimização de paradas)."
+    )
+
 # ─── Layout ───────────────────────────────────────────────────────────────────
-col_lista, col_mapa = st.columns([1, 2])
+col_lista, col_mapa = st.columns([65, 35])
 
 with col_lista:
-    header = f"Lista — {selected_date.isoformat()}"
+    # Métricas do dia (acima da lista)
+    n_pend = sum(1 for s in status.values() if s == STATUS_PENDENTE)
+    n_aten = sum(1 for s in status.values() if s == STATUS_ATENDIDO)
+    n_parcial = sum(1 for s in status.values() if s == STATUS_PARCIAL)
+    n_no = sum(1 for s in status.values() if s == STATUS_NO_SHOW)
+    n_rec = sum(1 for s in status.values() if s == STATUS_RECUSOU)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Pendente", n_pend)
+    m2.metric("Atendeu", n_aten)
+    m3.metric("Parcial", n_parcial)
+    m4.metric("Não atendeu", n_no)
+    m5.metric("Recusou", n_rec)
+
+    header = "Domicílios do dia"
     if read_only:
-        header += " · 🔒 read-only"
+        header += " · 🔒 somente leitura"
     st.subheader(header)
+    if not read_only:
+        st.caption(
+            "Selecione o status de cada morador no dropdown: pendente, atendeu, "
+            "não atendeu ou recusou."
+        )
 
     # Mostra contagem de no-shows herdados (só pra hoje/futuro)
     if not read_only:
@@ -618,31 +843,26 @@ with col_lista:
             )
             if n_followup_prev:
                 st.info(
-                    f"♻️ {n_followup_prev} follow-up(s) do dia {prev['exported_at'][:10]} "
-                    "puxado(s) pro topo da lista."
+                    f"♻️ {n_followup_prev} domicílio(s) re-agendado(s) — "
+                    f"não foram atendidos em {prev['exported_at'][:10]}."
                 )
-        week_snaps = snapshots_in_range(
+        month_snaps = snapshots_in_range(
             equipe_id,
             int(cluster_id),
             panel_key,
-            week_start(selected_date),
+            month_start(selected_date),
             selected_date - timedelta(days=1),
         )
-        weekly_outcomes = weekly_family_outcomes(week_snaps, family_lookup)
-        cooldown_pids = {
-            pid
-            for snap in week_snaps
-            for pid, snap_status in snap.get("status", {}).items()
-            if normalize_status(snap_status) == STATUS_ATENDIDO
-        }
-        if cooldown_pids:
+        monthly_outcomes = family_outcomes_in_range(month_snaps, family_lookup)
+        excluded_month = month_fulfilled_pids(monthly_outcomes)
+        if excluded_month:
             st.caption(
-                f"🗓️ {len(cooldown_pids)} domicílio(s) já atendido(s) nesta semana "
-                "foram empurrado(s) para o fim da prioridade."
+                f"🗓️ {len(excluded_month)} domicílio(s) já atendido(s) neste mês "
+                "foram excluído(s) do panel do dia."
             )
-        forced_same_week = {
+        forced_same_month = {
             fid
-            for fid, outcome in weekly_outcomes.items()
+            for fid, outcome in monthly_outcomes.items()
             if family_lookup.get(fid, {}).get("priority_band") == FAMILY_PRIORITY_HIGH
             and (
                 outcome["status"] == STATUS_NO_SHOW
@@ -651,127 +871,221 @@ with col_lista:
             and outcome.get("date")
             and date.fromisoformat(outcome["date"]) <= (selected_date - timedelta(days=1))
         }
-        if forced_same_week:
+        if forced_same_month:
             st.caption(
-                f"🚨 {len(forced_same_week)} domicílio(s) de alta prioridade com "
-                "morador prioritário pendente foram reagendado(s) para esta semana."
+                f"🚨 {len(forced_same_month)} domicílio(s) de prioridade alta com "
+                "morador pendente foram puxado(s) para este mês."
             )
+
+    PRIORITY_COLORS = {
+        FAMILY_PRIORITY_HIGH: "#e74c3c",
+        FAMILY_PRIORITY_MEDIUM: "#f39c12",
+        FAMILY_PRIORITY_LOW: "#6c757d",
+    }
+    CHIP_NEUTRAL = "#eef0f3"
+    CHIP_TEXT = "#374151"
+
+    def _chip(text: str, bg: str = CHIP_NEUTRAL, fg: str = CHIP_TEXT) -> str:
+        return (
+            f"<span style='background:{bg};color:{fg};padding:3px 10px;"
+            f"border-radius:999px;font-size:13px;margin-right:6px;"
+            f"display:inline-block;white-space:nowrap;line-height:1.6'>{text}</span>"
+        )
+
+    def _status_pill(s: str, large: bool = False) -> str:
+        pad = "6px 12px" if large else "3px 10px"
+        size = "14px" if large else "13px"
+        return (
+            f"<span style='background:{STATUS_COLOR[s]};color:white;"
+            f"padding:{pad};border-radius:999px;font-size:{size};"
+            f"font-weight:500;white-space:nowrap'>{s}</span>"
+        )
+
+    def _family_chips(family: dict) -> str:
+        chips = []
+        pb = family["priority_band"]
+        chips.append(_chip(f"prioridade {pb}", bg=PRIORITY_COLORS[pb], fg="white"))
+        chips.append(_chip(f"👥 {family['member_count']}"))
+        if any(m["gestacao"] for m in family["members"]):
+            chips.append(_chip("gestação"))
+        if any(m["diabetico"] for m in family["members"]):
+            chips.append(_chip("DM"))
+        if any(m["hipertenso"] for m in family["members"]):
+            chips.append(_chip("HAS"))
+        if any(m["vulnerabilidade"] for m in family["members"]):
+            chips.append(_chip("vulnerab."))
+        return "".join(chips)
 
     last_idx = len(ordem) - 1
     subst_pids = {v for v in substitutes.values() if v}
     for i, pid in enumerate(ordem):
         cur_status = status.get(pid, STATUS_PENDENTE)
-        color = STATUS_COLOR[cur_status]
+        family = family_lookup[pid]
         is_subst = pid in subst_pids
         with st.container(border=True):
-            top = st.columns([1, 8, 2])
-            with top[0]:
-                st.markdown(f"**{i+1:02d}.**")
-            with top[1]:
-                prefix = "🔁 " if is_subst else ""
-                st.markdown(f"**{prefix}{label_lookup[pid]}**")
-            with top[2]:
+            head = st.columns([1, 7, 3])
+            with head[0]:
                 st.markdown(
-                    f"<div style='text-align:right'><span style='background:{color};"
-                    f"color:white;padding:2px 8px;border-radius:6px;font-size:11px'>"
-                    f"{cur_status}</span></div>",
+                    f"<div style='font-size:22px;font-weight:700;color:#111;line-height:1.4'>"
+                    f"{i+1:02d}</div>",
+                    unsafe_allow_html=True,
+                )
+            with head[1]:
+                subst_tag = (
+                    "<span style='background:#fff3cd;color:#856404;padding:2px 8px;"
+                    "border-radius:4px;font-size:11px;margin-right:6px;font-weight:600'>"
+                    "SUBSTITUTO</span>"
+                    if is_subst else ""
+                )
+                st.markdown(
+                    f"<div style='font-family:ui-monospace,monospace;font-size:15px;"
+                    f"color:#111;font-weight:600'>{subst_tag}"
+                    f"{family['id_familia_sint'][:14]}…</div>"
+                    f"<div style='margin-top:8px'>{_family_chips(family)}</div>",
+                    unsafe_allow_html=True,
+                )
+            with head[2]:
+                st.markdown(
+                    f"<div style='text-align:right'>{_status_pill(cur_status, large=True)}</div>",
                     unsafe_allow_html=True,
                 )
 
             if not read_only:
-                row = st.columns([1, 1, 6])
-                up_disabled = i == 0
-                dn_disabled = i == last_idx
                 key_suffix = f"{equipe_id}_{cluster_id}_{selected_date.isoformat()}_{pid}"
-                if row[0].button("⬆︎", key=f"up_{key_suffix}", disabled=up_disabled,
-                                 use_container_width=True):
+                ctrl = st.columns([1, 1, 8])
+                if ctrl[0].button("⬆︎", key=f"up_{key_suffix}", disabled=(i == 0),
+                                  use_container_width=True, help="Subir na rota"):
                     new_ordem = list(ordem)
                     new_ordem[i - 1], new_ordem[i] = new_ordem[i], new_ordem[i - 1]
                     st.session_state[key_ordem] = new_ordem
                     st.rerun()
-                if row[1].button("⬇︎", key=f"dn_{key_suffix}", disabled=dn_disabled,
-                                 use_container_width=True):
+                if ctrl[1].button("⬇︎", key=f"dn_{key_suffix}", disabled=(i == last_idx),
+                                  use_container_width=True, help="Descer na rota"):
                     new_ordem = list(ordem)
                     new_ordem[i + 1], new_ordem[i] = new_ordem[i], new_ordem[i + 1]
                     st.session_state[key_ordem] = new_ordem
                     st.rerun()
-                with row[2]:
+            else:
+                key_suffix = f"{equipe_id}_{cluster_id}_{selected_date.isoformat()}_{pid}"
+
+            with st.expander("Ver moradores e histórico"):
+                stat_cols = st.columns(2)
+                with stat_cols[0]:
+                    extra = (
+                        f"<div style='color:#6c757d;font-size:12px;margin-top:2px'>última {family['ultima_visita']}</div>"
+                        if family['ultima_visita'] else ""
+                    )
                     st.markdown(
-                        f"<div style='text-align:center'><span style='background:{STATUS_COLOR[cur_status]};"
-                        f"color:white;padding:6px 10px;border-radius:6px;font-size:12px;display:inline-block'>"
-                        f"domicílio: {cur_status}</span></div>",
+                        f"<div style='font-size:13px;color:#6c757d;text-transform:uppercase;"
+                        f"letter-spacing:0.5px;font-weight:600'>Visitas anteriores</div>"
+                        f"<div style='font-size:24px;font-weight:700;color:#111;line-height:1.2'>"
+                        f"{family['n_visitas_total']}</div>{extra}",
+                        unsafe_allow_html=True,
+                    )
+                with stat_cols[1]:
+                    extra = (
+                        f"<div style='color:#6c757d;font-size:12px;margin-top:2px'>último {family['ultimo_evento']}</div>"
+                        if family['ultimo_evento'] else ""
+                    )
+                    st.markdown(
+                        f"<div style='font-size:13px;color:#6c757d;text-transform:uppercase;"
+                        f"letter-spacing:0.5px;font-weight:600'>Eventos clínicos</div>"
+                        f"<div style='font-size:24px;font-weight:700;color:#111;line-height:1.2'>"
+                        f"{family['n_eventos_total']}</div>{extra}",
                         unsafe_allow_html=True,
                     )
 
-            with st.expander("ⓘ detalhes"):
-                family = family_lookup[pid]
-                st.markdown(
-                    f"**Domicílio:** `{family['id_familia_sint']}`  \n"
-                    f"**Moradores:** {family['member_count']}  \n"
-                    f"**Prioridade familiar:** {family['priority_band']}  \n"
-                    f"**Moradores prioritários:** {len(family['priority_member_ids'])}  \n"
-                    f"**Visitas históricas:** {family['n_visitas_total']}"
-                    + (f" · última {family['ultima_visita']}" if family['ultima_visita'] else "")
-                    + f"  \n**Eventos clínicos:** {family['n_eventos_total']}"
-                    + (f" · último {family['ultimo_evento']}" if family['ultimo_evento'] else "")
+                n_priority = len(family["priority_member_ids"])
+                priority_note = (
+                    f" · <span style='color:#e74c3c;font-weight:600'>{n_priority} prioritário(s)</span>"
+                    if n_priority else ""
                 )
-                st.markdown("**Membros**")
+                st.markdown(
+                    f"<div style='margin-top:18px;font-size:13px;color:#6c757d;"
+                    f"text-transform:uppercase;letter-spacing:0.5px;font-weight:600'>"
+                    f"Moradores ({family['member_count']}){priority_note}</div>",
+                    unsafe_allow_html=True,
+                )
+
                 for member in family["members"]:
                     member_pid = member["paciente_id"]
                     member_cur_status = member_status[pid][member_pid]
                     is_priority = member_pid in family["priority_member_ids"]
-                    flags = []
-                    if member["hipertenso"]:
-                        flags.append("HAS")
-                    if member["diabetico"]:
-                        flags.append("DM")
+                    cond_chips = []
                     if member["gestacao"]:
-                        flags.append("gestação")
-                    member_cols = st.columns([6, 3])
-                    with member_cols[0]:
-                        prefix = "**prioritário** · " if is_priority else ""
-                        st.markdown(
-                            prefix
-                            + f"`{member_pid[:12]}…` · "
-                            f"{member.get('sexo') or '—'} · {member.get('faixa_etaria') or '—'}"
-                            + (f" · {' / '.join(flags)}" if flags else "")
-                            + (
-                                f" · vuln: {member.get('vulnerabilidade')}"
-                                if member.get('vulnerabilidade') else ""
-                            )
-                            + (
-                                f"  \nHistórico: {member['n_visitas']} visita(s)"
-                                + (
-                                    f" · última {member['ultima_visita']}"
-                                    if member['ultima_visita'] else ""
-                                )
-                            )
-                            + (
-                                f"  \nEventos: {member['n_eventos']}"
-                                + (
-                                    f" · último {member['ultimo_evento']}"
-                                    if member['ultimo_evento'] else ""
-                                )
-                                if member["n_eventos"] else ""
-                            )
+                        cond_chips.append(_chip("gestação"))
+                    if member["diabetico"]:
+                        cond_chips.append(_chip("DM"))
+                    if member["hipertenso"]:
+                        cond_chips.append(_chip("HAS"))
+                    vuln = member.get("vulnerabilidade")
+                    if vuln:
+                        vuln_text = (
+                            str(vuln)
+                            if isinstance(vuln, str) and vuln.lower() not in {"true", "false"}
+                            else "vulnerab."
                         )
-                    with member_cols[1]:
-                        if read_only:
+                        cond_chips.append(_chip(vuln_text))
+                    chips_html = "".join(cond_chips)
+
+                    star = (
+                        "<span title='morador prioritário' style='color:#e74c3c;"
+                        "font-weight:700;margin-right:6px;font-size:16px'>★</span>"
+                        if is_priority else ""
+                    )
+                    sexo = member.get("sexo") or "—"
+                    faixa = member.get("faixa_etaria") or "—"
+
+                    history_bits = []
+                    if member["n_visitas"]:
+                        b = f"📋 {member['n_visitas']} visita(s)"
+                        if member["ultima_visita"]:
+                            b += f" · {member['ultima_visita']}"
+                        history_bits.append(b)
+                    if member["n_eventos"]:
+                        b = f"⚕️ {member['n_eventos']} evento(s)"
+                        if member["ultimo_evento"]:
+                            b += f" · {member['ultimo_evento']}"
+                        history_bits.append(b)
+                    history_html = (
+                        f"<div style='font-size:13px;color:#6c757d;margin-top:6px'>"
+                        f"{' · '.join(history_bits)}</div>"
+                        if history_bits else ""
+                    )
+
+                    with st.container(border=True):
+                        mcols = st.columns([7, 3])
+                        with mcols[0]:
                             st.markdown(
-                                f"<div style='text-align:right'><span style='background:{STATUS_COLOR[member_cur_status]};"
-                                f"color:white;padding:2px 8px;border-radius:6px;font-size:11px'>"
-                                f"{member_cur_status}</span></div>",
+                                f"<div style='font-size:15px;color:#111;line-height:1.4'>"
+                                f"{star}<b>{sexo}</b> · {faixa}"
+                                f"<span style='color:#9ca3af;font-family:ui-monospace,monospace;"
+                                f"font-size:12px;margin-left:8px'>{member_pid[:10]}…</span>"
+                                f"</div>"
+                                + (f"<div style='margin-top:6px'>{chips_html}</div>" if chips_html else "")
+                                + history_html,
                                 unsafe_allow_html=True,
                             )
-                        else:
-                            if st.button(
-                                f"{member_cur_status} ↻",
-                                key=f"member_{key_suffix}_{member_pid}",
-                                use_container_width=True,
-                            ):
-                                member_status[pid][member_pid] = next_status(member_cur_status)
-                                st.session_state[key_member_status] = member_status
-                                st.rerun()
+                        with mcols[1]:
+                            if read_only:
+                                st.markdown(
+                                    f"<div style='text-align:right;padding-top:8px'>"
+                                    f"{_status_pill(member_cur_status)}</div>",
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                new_choice = st.selectbox(
+                                    "status",
+                                    options=STATUS_CYCLE,
+                                    index=STATUS_CYCLE.index(member_cur_status),
+                                    key=f"member_{key_suffix}_{member_pid}",
+                                    label_visibility="collapsed",
+                                    help="Selecione o status deste morador",
+                                )
+                                if new_choice != member_cur_status:
+                                    member_status[pid][member_pid] = new_choice
+                                    st.session_state[key_member_status] = member_status
+                                    st.rerun()
 
 # ─── Rota (respeita ordem, pula quem precisa de follow-up) ────────────────────
 waypoints_pids = [pid for pid in ordem if status.get(pid) not in STATUS_REQUER_FOLLOWUP]
@@ -792,21 +1106,37 @@ if len(coords) >= 2:
     except (OSRMError, Exception) as e:
         route_err = str(e)
 
-# ─── Métricas + export ────────────────────────────────────────────────────────
+# ─── Export + duração ─────────────────────────────────────────────────────────
 with col_lista:
     st.divider()
-    n_pend = sum(1 for s in status.values() if s == STATUS_PENDENTE)
-    n_aten = sum(1 for s in status.values() if s == STATUS_ATENDIDO)
-    n_parcial = sum(1 for s in status.values() if s == STATUS_PARCIAL)
-    n_no = sum(1 for s in status.values() if s == STATUS_NO_SHOW)
-    n_rec = sum(1 for s in status.values() if s == STATUS_RECUSOU)
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("Pendente", n_pend)
-    m2.metric("Atendeu", n_aten)
-    m3.metric("Parcial", n_parcial)
-    m4.metric("Não atend.", n_no)
-    m5.metric("Recusou", n_rec)
-    m6.metric("Rota", f"{route_dur_s/3600:.1f}h" if route_dur_s else "—")
+    duration_label = f"{route_dur_s/3600:.1f}h" if route_dur_s else "—"
+    distance_label = f"{route_dist_m/1000:.1f}km" if route_dist_m else "—"
+    st.caption(f"⏱️ Duração estimada da rota: **{duration_label}** · {distance_label}")
+
+    if ordem:
+        print_html = build_print_html(
+            equipe_id=equipe_id,
+            cluster_id=int(cluster_id),
+            acs_label=acs_label_by_cluster.get(cluster_id, f"ACS {cluster_id}"),
+            selected_date=selected_date,
+            ubs_lat=float(ubs["ubs_lat"]),
+            ubs_lon=float(ubs["ubs_lon"]),
+            ordem=ordem,
+            family_lookup=family_lookup,
+            coords_lookup=coords_lookup,
+            status=status,
+            substitutes=substitutes,
+            route_geom=route_geom,
+            route_dur_s=route_dur_s,
+            route_dist_m=route_dist_m,
+        )
+        st.download_button(
+            "🖨️ Baixar rota imprimível (HTML)",
+            data=print_html,
+            file_name=f"rota_{equipe_id[:8]}_acs{int(cluster_id)}_{selected_date.isoformat()}.html",
+            mime="text/html",
+            use_container_width=True,
+        )
 
     if route_err:
         st.warning(f"OSRM: {route_err}")
@@ -822,7 +1152,7 @@ with col_lista:
             "panel_key": panel_key,
             "panel_size": int(len(familias_panel)),
             "selecao_dia_strategy": (
-                "top-N domicílios por centróide + rerank no-show + cooldown semanal de atendidos"
+                "top-N domicílios por centróide + rerank no-show + cadência mensal (exclusão dos atendidos no mês)"
             ),
             "exported_at": datetime.now().isoformat(timespec="seconds"),
             "ordem": ordem,
@@ -831,12 +1161,23 @@ with col_lista:
             "substitutes": substitutes,
             "rota": {"duration_s": route_dur_s, "distance_m": route_dist_m},
         }
-        out = save_snapshot(payload, equipe_id, int(cluster_id), panel_key, selected_date)
-        st.caption(f"💾 autosave · {datetime.now().strftime('%H:%M:%S')} · `{out.name}`")
+        try:
+            out = save_snapshot(payload, equipe_id, int(cluster_id), panel_key, selected_date)
+            _save_placeholder.markdown(
+                f"<div style='text-align:right;color:#2ecc71;font-size:12px'>"
+                f"✓ Salvo {datetime.now().strftime('%H:%M:%S')}</div>",
+                unsafe_allow_html=True,
+            )
+        except Exception:
+            _save_placeholder.markdown(
+                "<div style='text-align:right;color:#e74c3c;font-size:12px'>⚠️ Não salvo</div>",
+                unsafe_allow_html=True,
+            )
+            raise
 
 # ─── Mapa ─────────────────────────────────────────────────────────────────────
 with col_mapa:
-    st.subheader("Mapa")
+    st.subheader("Rota no mapa")
     m = folium.Map(
         location=[ubs["ubs_lat"], ubs["ubs_lon"]],
         zoom_start=14,
@@ -859,7 +1200,7 @@ with col_mapa:
             fill=True,
             fill_opacity=0.85,
             weight=2,
-            tooltip=f"{i:02d}. {label_lookup[pid]} — {status.get(pid)} (clique pra detalhes)",
+            tooltip=f"{i:02d}. {label_lookup[pid]} — {status.get(pid)}",
             popup=folium.Popup(family_popup_html(family), max_width=320),
         ).add_to(m)
         folium.map.Marker(
@@ -875,7 +1216,10 @@ with col_mapa:
         latlon = [(lat, lon) for lon, lat in route_geom["coordinates"]]
         folium.PolyLine(
             locations=latlon, color="#4363d8", weight=4, opacity=0.7,
-            tooltip=f"{route_dur_s/3600:.1f}h · {route_dist_m/1000:.1f}km",
+            tooltip=(
+                f"Duração ≈ {route_dur_s/3600:.1f}h · "
+                f"{route_dist_m/1000:.1f}km (estimativa OSRM)"
+            ),
         ).add_to(m)
 
-    st_folium(m, height=600, use_container_width=True, returned_objects=[])
+    st_folium(m, height=720, use_container_width=True, returned_objects=[])
