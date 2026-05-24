@@ -12,6 +12,11 @@ BBOX = {"lon_min": -43.310, "lat_min": -22.995, "lon_max": -43.180, "lat_max": -
 DATA_DIR = Path.home() / "Documents"
 RANDOM_STATE = 42
 MIN_PACIENTES_POR_CLUSTER = 20
+FAMILIA_CELL_SIZE_M = 150.0
+
+# Conversão local degrees ↔ metros (planar; ok em raios pequenos no Rio ~22.9°S).
+_M_PER_DEG_LAT = 111195.0
+_M_PER_DEG_LON_RIO = 102392.0
 
 
 @st.cache_data(show_spinner=False)
@@ -48,6 +53,26 @@ def load_eventos_agg() -> pd.DataFrame:
         FROM read_parquet('{DATA_DIR}/eventos_clinicos_anonimizados.parquet')
         GROUP BY paciente_id
     """).df()
+
+
+def add_id_familia_sint(df: pd.DataFrame, cell_size_m: float = FAMILIA_CELL_SIZE_M) -> pd.DataFrame:
+    """Cria `id_familia_sint` por equipe + célula territorial de 150m."""
+    out = df.copy()
+    lat0 = BBOX["lat_min"]
+    lon0 = BBOX["lon_min"]
+    y_m = (out["lat"].to_numpy() - lat0) * _M_PER_DEG_LAT
+    x_m = (out["lon"].to_numpy() - lon0) * _M_PER_DEG_LON_RIO
+    cell_y = np.floor_divide(y_m, cell_size_m).astype(int)
+    cell_x = np.floor_divide(x_m, cell_size_m).astype(int)
+    out["id_familia_sint"] = (
+        "fam_"
+        + out["equipe_id"].astype(str).str[:8]
+        + "_"
+        + pd.Series(cell_x, index=out.index).astype(str)
+        + "_"
+        + pd.Series(cell_y, index=out.index).astype(str)
+    )
+    return out
 
 
 def paciente_detalhes(
@@ -93,7 +118,7 @@ def load_pacientes() -> pd.DataFrame:
         df["lon"].between(BBOX["lon_min"], BBOX["lon_max"]) &
         df["lat"].between(BBOX["lat_min"], BBOX["lat_max"])
     )
-    return df[in_bbox].reset_index(drop=True)
+    return add_id_familia_sint(df[in_bbox].reset_index(drop=True))
 
 
 def clusterizar(df: pd.DataFrame, k: int = 8) -> pd.DataFrame:
@@ -122,11 +147,6 @@ def lista_inicial(df_cluster: pd.DataFrame, ubs_lat: float, ubs_lon: float) -> l
         cur_lat, cur_lon = pendentes[i]["lat"], pendentes[i]["lon"]
         pendentes.pop(i)
     return ordem
-
-
-# Conversão local degrees ↔ metros (planar; ok em raios pequenos no Rio ~22.9°S).
-_M_PER_DEG_LAT = 111195.0
-_M_PER_DEG_LON_RIO = 102392.0
 
 
 def find_substitute_by_detour(
@@ -184,23 +204,50 @@ def selecao_dia(
     n: int,
     prev_status: dict[str, str] | None = None,
     followup_triggers: set[str] | None = None,
+    cooldown_pids: set[str] | None = None,
+    forced_front_pids: set[str] | None = None,
 ) -> list[str]:
     """
     Seleção dos N pacientes do dia.
 
     Placeholder enquanto ranker real não existe:
-      1. Pacientes em status de follow-up no snapshot anterior entram primeiro
-         (rerank — memory rerank-no-show). Default: "não atendeu" + "recusou atendimento".
-      2. Resto preenchido por top-N nearest-neighbor a partir da UBS.
+      1. Reofertas forçadas entram primeiro.
+      2. Follow-ups do snapshot anterior entram na frente.
+      3. Famílias mais prioritárias sobem dentro da ordem territorial.
+      4. Atendidos na mesma semana vão para o fim da prioridade.
     """
     triggers = followup_triggers or {"não atendeu", "recusou atendimento"}
+    cooldown = cooldown_pids or set()
+    forced_front = forced_front_pids or set()
     pool_order = lista_inicial(df_cluster, ubs_lat, ubs_lon)
+    priority_lookup = df_cluster.set_index("paciente_id")["priority_band"].to_dict()
+
+    def _by_priority(candidates: list[str]) -> list[str]:
+        alta = [p for p in candidates if priority_lookup.get(p) == "alta"]
+        media = [p for p in candidates if priority_lookup.get(p) == "média"]
+        baixa = [p for p in candidates if priority_lookup.get(p) == "baixa"]
+        outros = [p for p in candidates if p not in set(alta + media + baixa)]
+        return alta + media + baixa + outros
+
+    forced = [p for p in pool_order if p in forced_front]
     if prev_status:
-        followups = [p for p in pool_order if prev_status.get(p) in triggers]
+        followups = [
+            p for p in pool_order
+            if p not in forced_front and prev_status.get(p) in triggers
+        ]
     else:
         followups = []
-    restantes = [p for p in pool_order if p not in set(followups)]
-    return followups[:n] + restantes[: max(0, n - len(followups))]
+    blocked = set(forced) | set(followups)
+    frescos = [
+        p for p in pool_order
+        if p not in blocked and p not in cooldown
+    ]
+    cooldown_tail = [
+        p for p in pool_order
+        if p not in blocked and p in cooldown
+    ]
+    ranked = forced + _by_priority(followups) + _by_priority(frescos) + _by_priority(cooldown_tail)
+    return ranked[:n]
 
 
 def label_paciente(row: pd.Series) -> str:
