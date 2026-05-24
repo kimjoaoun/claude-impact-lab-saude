@@ -1,0 +1,7 @@
+routing/data/*
+!routing/data/.gitkeep
+notebooks/.ipynb_checkpoints/
+notebooks/.venv/
+app/.venv/
+app/data/dia/*.json
+**/__pycache__/

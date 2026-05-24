@@ -1,0 +1,30 @@
+services:
+  osrm-foot:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: osrm-foot
+    profiles: ["routing"]
+    ports:
+      - "5050:5000"
+    volumes:
+      - ./data:/data
+    command: >
+      osrm-routed --algorithm mld
+      --max-table-size 10000
+      --max-trip-size 1000
+      /data/foot/rio.osrm
+    restart: unless-stopped
+
+  osrm-car:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: osrm-car
+    profiles: ["routing"]
+    ports:
+      - "5051:5000"
+    volumes:
+      - ./data:/data
+    command: >
+      osrm-routed --algorithm mld
+      --max-table-size 10000
+      --max-trip-size 1000
+      /data/car/rio.osrm
+    restart: unless-stopped
