@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Baixa o extrato OSM do estado do Rio de Janeiro (Geofabrik).
-# Geofabrik nao publica extrato a nivel de municipio; o estado de RJ
-# (~150MB) cobre cidade + regiao metropolitana com folga.
+# Baixa o extrato OSM da regiao Sudeste do Brasil (Geofabrik).
+# Geofabrik descontinuou o extrato por estado (rio-de-janeiro-latest);
+# o menor disponivel que cobre o Rio agora e sudeste (~500MB).
+# O bbox crop em crop-osm.sh reduz isso a ~10-20MB pra a area de cobertura.
 #
-# Override opcional via env var OSM_URL para usar outro extrato
-# (ex.: sudeste-latest.osm.pbf se algum dia o estado nao bastar).
+# Override opcional via env var OSM_URL.
 
-OSM_URL="${OSM_URL:-https://download.geofabrik.de/south-america/brazil/sudeste/rio-de-janeiro-latest.osm.pbf}"
+OSM_URL="${OSM_URL:-https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$(cd "${SCRIPT_DIR}/../data" && pwd)"

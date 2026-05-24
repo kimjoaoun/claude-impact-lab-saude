@@ -11,12 +11,13 @@ PROFILE="${1:?uso: $0 <profile>}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$(cd "${SCRIPT_DIR}/../data" && pwd)"
-PBF="${DATA_DIR}/rio.osm.pbf"
+PBF="${DATA_DIR}/rio-crop.osm.pbf"
 PROFILE_DIR="${DATA_DIR}/${PROFILE}"
 IMAGE="ghcr.io/project-osrm/osrm-backend:latest"
 
 if [[ ! -f "${PBF}" ]]; then
-  echo "Erro: ${PBF} nao encontrado. Rode scripts/download-osm.sh primeiro." >&2
+  echo "Erro: ${PBF} nao encontrado." >&2
+  echo "Rode scripts/download-osm.sh e depois scripts/crop-osm.sh primeiro." >&2
   exit 1
 fi
 

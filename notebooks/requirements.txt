@@ -1,0 +1,8 @@
+duckdb>=1.0
+pandas>=2.0
+pyarrow>=15
+scikit-learn>=1.4
+requests>=2.31
+folium>=0.16
+jupyter>=1.0
+matplotlib>=3.8

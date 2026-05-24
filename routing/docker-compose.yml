@@ -4,7 +4,7 @@ services:
     container_name: osrm-foot
     profiles: ["routing"]
     ports:
-      - "5000:5000"
+      - "5050:5000"
     volumes:
       - ./data:/data
     command: >
@@ -19,7 +19,7 @@ services:
     container_name: osrm-car
     profiles: ["routing"]
     ports:
-      - "5001:5000"
+      - "5051:5000"
     volumes:
       - ./data:/data
     command: >
